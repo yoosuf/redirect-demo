@@ -11,26 +11,57 @@ document.querySelector('#app').innerHTML = `
   </div>
 `;
 
+const responseElement = document.getElementById('responseData');
+
+// Axios instance
+const api = axios.create({
+    baseURL: 'http://localhost:3000'
+});
+
+// Modify Axios to treat 302 as a valid response
+api.interceptors.response.use(
+    async (response) => {
+        if (response.status === 302 && response.data.redirectTo) {
+            responseElement.textContent = `Redirecting to: ${response.data.redirectTo}`;
+
+            // Delay to simulate a transition
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Fetch redirected data
+            return api.get(response.data.redirectTo)
+                .then(redirectedResponse => {
+                    responseElement.textContent = `Redirected Response: ${JSON.stringify(redirectedResponse.data)}`;
+                    return redirectedResponse;
+                });
+        }
+        return response;
+    },
+    (error) => {
+        if (error.response && error.response.status === 302) {
+            const redirectTo = error.response.data.redirectTo;
+            responseElement.textContent = `Redirecting to: ${redirectTo}`;
+
+            // Delay before following redirect
+            return new Promise(resolve => setTimeout(resolve, 1000))
+                .then(() => api.get(redirectTo))
+                .then(redirectedResponse => {
+                    responseElement.textContent = `Redirected Response: ${JSON.stringify(redirectedResponse.data)}`;
+                    return redirectedResponse;
+                });
+        }
+
+        responseElement.textContent = error.response
+            ? `Error: ${error.response.status} - ${error.response.data.message}`
+            : 'Request failed';
+        return Promise.reject(error);
+    }
+);
+
 document.getElementById('fetchRedirect').addEventListener('click', async () => {
-  const responseElement = document.getElementById('responseData');
-  responseElement.textContent = 'Redirecting...';
-  try {
-      const response = await axios.get('http://localhost:3000/old-route', {
-          maxRedirects: 0,
-          validateStatus: status => status >= 200 && status < 400,
-      });
-      
-      if (response.status === 302) {
-          responseElement.textContent = `Redirecting to: ${response.data.redirectTo}`;
-          
-          setTimeout(async () => {
-              const redirectedResponse = await axios.get(`http://localhost:3000${response.data.redirectTo}`);
-              responseElement.textContent = `Redirected Response: ${JSON.stringify(redirectedResponse.data)}`;
-          }, 1000);
-      } else {
-          responseElement.textContent = `Response: ${JSON.stringify(response.data)}`;
-      }
-  } catch (error) {
-      responseElement.textContent = error.response ? `Error: ${error.response.status} - ${error.response.data.message}` : 'Request failed';
-  }
+    responseElement.textContent = 'Redirecting...';
+    try {
+        await api.get('/old-route');
+    } catch (error) {
+        console.error(error);
+    }
 });
